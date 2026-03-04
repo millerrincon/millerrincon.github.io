@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Mapa Interactivo – Defensoría</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+}
+#map { width: 100%; height: 100%; }
+
+/* ================= FILTROS ================= */
+#filterBar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 8px 10px;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  z-index: 9999;
+  width: 780px;
+  max-width: 96%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#filterBar h2 {
+  margin: 0;
+  padding: 4px;
+  background: #003469;
+  color: white;
+  font-size: 14px;
+  text-align: center;
+  border-radius: 6px;
+}
+.filtros-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+#filterBar select,
+#filterBar button {
+  height: 28px;
+  font-size: 12px;
+  padding: 4px;
+  border-radius: 6px;
+}
+#filterBar select { width: 135px; }
+#filterBar button {
+  background: #003469;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+#toggleFiltersBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10000;
+  padding: 6px 11px;
+  background: #003469;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* ================= POPUPS ================= */
+.popup-flotante {
+  position: absolute;
+  background: white;
+  border: 2px solid #003399;
+  border-radius: 8px;
+  padding: 6px;
+  width: 500px;
+  font-size: 13px;
+  box-shadow: 0px 3px 8px rgba(0,0,0,0.25);
+  cursor: move;
+  z-index: 9000;
+}
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.popup-header img { height: 38px; }
+.popup-title {
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1.2;
+}
+.popup-line {
+  border-top: 1px solid #003469;
+  margin: 6px 0;
+}
+.popup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.popup-table th {
+  background: #003399;
+  color: white;
+  padding: 4px;
+  text-align: left;
+}
+.popup-table td, .popup-table th {
+  border: 1px solid #ccc;
+  padding: 4px;
+}
+.btn-cerrar {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  color: #003469;
+  font-size: 16px;
+}
+</style>
+</head>
+
+<body>
+
+<button id="toggleFiltersBtn">Ocultar filtros</button>
+
+<div id="filterBar">
+  <h2>Distribución Regional</h2>
+  <div class="filtros-row">
+    <select id="filterDepartamento"><option value="">Departamento</option></select>
+    <select id="filterMunicipio"><option value="">Municipio</option></select>
+    <button id="btnLimpiarFiltros">Limpiar</button>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+/* ================= ENTIDADES ================= */
+const entidades = [
+  {cod_municipio: "47703", municipio: "San Zenón", departamento: "Magdalena", HV: "HOMICIDIO DE LOS LIDERES: LUIS EDUARDO CISNERO GÓMEZ (líder y representante legal de la Asociación de Víctimas Desplazadas de la Lucha (ASOCADELU) asesinado el 9 de noviembre de 2025, FUERON ASESINADOS ENTRE 2025 Y 2026 Y DIOMEDES MEJÍA NAVARRO (Movimiento Fuerza Ciudadana) el 3 de febrero de 2026", prediosInfo: [{ nro: "1", predio: "El Garzal", FMI: "224-4549", organizacion: "ASOCADELU" }]},
+  {cod_municipio: "25572", municipio: "Puerto Salgar", departamento: "Cundinamarca", HV: "HOMICIDIO DE LOS LIDERES: Carlos Romero el 16 de diciembre de 2023 y Germán Roso Aristizabal en agosto de 2025", prediosInfo: [{nro: "1", predio: "Valle Escondido", FMI: "162-5334 Y OTROS", organizacion: "Asociación Campesina, Gallera De Agricultores Del Magdalena Medio, Asociación De Vivienda Renacer De La Dorada, Caldas"}]},
+  {cod_municipio: "18001", municipio: "Florencia", departamento: "Caquetá", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "N/A", FMI: "N/A", organizacion: "JAC Vereda Santo Domingo - Caqueta"}]},
+  {cod_municipio: "50287", municipio: "Fuente de Oro", departamento: "Meta", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [
+    {nro: "1", predio: "San Luis", FMI: "236-14027", organizacion: "Asociación De Campesinos Tierra Y Vida De Fuente De Oro ASOCAMTIVI"},
+    {nro: "2", predio: "LT Rural", FMI: "236-16746", organizacion: "Asociación De Campesinos Tierra Y Vida De Fuente De Oro ASOCAMTIVI"},
+    {nro: "3", predio: "LT Rural 3", FMI: "236-16747", organizacion: "Asociación De Campesinos Tierra Y Vida De Fuente De Oro ASOCAMTIVI"},
+    {nro: "4", predio: "Guayabal - Hoy Las Tres Marías", FMI: "236-35540", organizacion: "Asociación De Campesinos Tierra Y Vida De Fuente De Oro ASOCAMTIVI"},
+    {nro: "5", predio: "El Caimito", FMI: "236-568", organizacion: "Asociación De Campesinos Tierra Y Vida De Fuente De Oro ASOCAMTIVI"}
+  ]},
+  {cod_municipio: "20383", municipio: "La Gloria", departamento: "Cesar", HV: "Homicidio del Dr Jorge Rangel Quintero el 30 de mayo de 2025, quien se desempeñaba como personero municipal de La Gloria en la diligencia de entrega del predio al campesinado.", prediosInfo: [
+    {nro: "1", predio: "El Amparo", FMI: "196-15490", organizacion: "Asociación Colombiana De Desplazados Al Retorno - ASOCADAR"},
+    {nro: "2", predio: "El Porvenir", FMI: "196-15651", organizacion: "Asociación Colombiana De Desplazados Al Retorno - ASOCADAR"},
+    {nro: "3", predio: "San Ignacio", FMI: "196-3114", organizacion: "Asociación Colombiana De Desplazados Al Retorno - ASOCADAR"}
+  ]},
+  {cod_municipio: "15572", municipio: "Puerto Boyacá", departamento: "Boyacá", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [
+    {nro: "1", predio: "Manzanares - Mandalay", FMI: "088-6814", organizacion: "Asociación Agropecuaria De Isleros De Puerto Niño, Asociación De Pescadores Veredas Puerto Niño Y Kilómetro 1  1/2"},
+    {nro: "2", predio: "La Fe 1", FMI: "088-2103", organizacion: "AMECAM Asociacion De Mujeres Emprededoras Campesinas"},
+    {nro: "3", predio: "La Fe 1", FMI: "088-2104", organizacion: "ASODELIRIO Asociación de parcelas campesinas el progreso finca san isidro, vereda El Delirio sector La Fe - ASOPARAISO  Asociación campesina El Paraiso - ASORECAMM Asociación regional de cacaoteros del Magdalena Medio "},
+    {nro: "4", predio: "San Isidro", FMI: "088-3481", organizacion: "AMECAM Asociacion De Mujeres Emprededoras Campesinas"}
+  ]},
+  {cod_municipio: "47707", municipio: "Santa Ana", departamento: "Magdalena", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "Guineo Abajo", FMI: "226-6735", organizacion: "ASOCAMGRANCOL"}]},
+  {cod_municipio: "47545", municipio: "Pijiño del Carmen", departamento: "Magdalena", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "Vuelta de los Terneros", FMI: "226-6734", organizacion: "ASOCAMGRANCOL"}]},
+  {cod_municipio: "47189", municipio: "Ciénaga", departamento: "Magdalena", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "N/A", FMI: "N/A", organizacion: "MENINPES"}]},
+  {cod_municipio: "23189", municipio: "Ciénaga de Oro", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "N/A", FMI: "N/A", organizacion: "M.S El Agua Contando Historia"}]},
+  {cod_municipio: "23168", municipio: "Chimá", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [
+    {nro: "1", predio: "N/A", FMI: "N/A", organizacion: "Persona Natural"},
+    {nro: "2", predio: "N/A", FMI: "N/A", organizacion: "M.S El Agua Contando Historia"}
+  ]},
+  {cod_municipio: "23686", municipio: "San Pelayo", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [
+    {nro: "1", predio: "N/A", FMI: "N/A", organizacion: "ANUC San Pelayo"},
+    {nro: "2", predio: "N/A", FMI: "N/A", organizacion: "Persona Natural"}
+  ]},
+  {cod_municipio: "23300", municipio: "Cotorra", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "N/A", FMI: "N/A", organizacion: "M.S El Agua Contando Historia"}]},
+  {cod_municipio: "23464", municipio: "Momil", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "N/A", FMI: "N/A", organizacion: "M.S El Agua Contando Historia"}]},
+  {cod_municipio: "23586", municipio: "Purísima", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [
+    {nro: "1", predio: "N/A", FMI: "N/A", organizacion: "M.S El Agua Contando Historia"},
+    {nro: "2", predio: "N/A", FMI: "N/A", organizacion: "Persona Natural"}
+  ]},
+  {cod_municipio: "23417", municipio: "Lorica", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [
+    {nro: "1", predio: "N/A", FMI: "N/A", organizacion: "M.S El Agua Contando Historia"},
+    {nro: "2", predio: "N/A", FMI: "N/A", organizacion: "Persona Natural"}
+  ]},
+  {cod_municipio: "23001", municipio: "Montería", departamento: "Córdoba", HV: "Líderes reportan existencia de amenazas y temor", prediosInfo: [{nro: "1", predio: "N/A", FMI: "N/A", organizacion: "Persona Natural"}]}
+];
+
+/* ================= MUNICIPIOS COLOREADOS ================= */
+var municipiosColoreados = {
+  "47703": "yellow",
+  "25572": "blue",
+  "18001": "red",
+  "50287": "green",
+  "20383": "brown",
+  "15572": "pink",
+  "47707": "orange",
+  "47545": "purple",
+  "47189": "cyan",
+  "23168": "lime",
+  "23189": "teal",
+  "23686": "indigo",
+  "23300": "magenta",
+  "23464": "gold",
+  "23586": "silver",
+  "23417": "violet",
+  "23001": "olive"
+};
+
+/* ================= MAPA ================= */
+const map = L.map("map").setView([4.6, -74.1], 6);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+let capaMunicipios;
+const popupsActivos = [];
+
+/* ================= FUNCIONES ================= */
+function getCodigoMunicipio(f) {
+  return f.properties?.MPIO_CCNCT?.toString().padStart(5, "0");
+}
+
+function buscarEntidad(cod) {
+  return entidades.find(e => e.cod_municipio === cod);
+}
+
+function cerrarTodosLosPopups() {
+  while (popupsActivos.length > 0) {
+    const item = popupsActivos.pop();
+    if (item.popup && item.popup.parentNode) item.popup.remove();
+    if (item.line) map.removeLayer(item.line);
+    map.off('move zoom', item.actualizar);
+  }
+}
+
+/* ================= POPUP ================= */
+function crearPopup(entidad, latlng) {
+  const div = document.createElement("div");
+  div.className = "popup-flotante";
+  
+  let html = `
+    <div class="btn-cerrar">✕</div>
+    <div class="popup-header">
+      <img src="https://www.defensoria.gov.co/o/defensoria-del-pueblo-theme/html/assets/img/home/2022_06-16_logo_DPC_home-desktop.svg">
+      <div class="popup-title">
+        Defensoría Delegada para los Asuntos Agrarios,<br>
+        Territorialidades y Derechos del Campesinado
+      </div>
+    </div>
+    <div class="popup-line"></div>
+  `;
+
+  if (entidad) {
+    html += `
+      <b>Departamento:</b> ${entidad.departamento}<br>
+      <b>Municipio:</b> ${entidad.municipio}<br><br>
+      <b>Hecho Victimizante:</b><br> ${entidad.HV || "No registrado"}<br><br>
+      
+      <table class="popup-table">
+        <thead>
+          <tr>
+            <th>Nro</th>
+            <th>Predio</th>
+            <th>FMI</th>
+            <th>Organización_Beneficiaria</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(entidad.prediosInfo || []).map(p => `
+            <tr>
+              <td>${p.nro || '-'}</td>
+              <td>${p.predio || '-'}</td>
+              <td>${p.FMI || '-'}</td>
+              <td>${p.organizacion || '-'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } else {
+    html += `<i>Sin información registrada para este municipio</i>`;
+  }
+
+  div.innerHTML = html;
+  document.body.appendChild(div);
+
+  const pt = map.latLngToContainerPoint(latlng);
+  div.style.left = (pt.x + 30) + "px";
+  div.style.top = (pt.y - 30) + "px";
+
+  const line = L.polyline([latlng, latlng], { color: "#003469", weight: 3 }).addTo(map);
+
+  function actualizarLinea() {
+    if (!div.parentNode) return;
+    const popupCenter = [div.offsetLeft + div.clientWidth / 2, div.offsetTop + div.clientHeight / 2];
+    const popupLatLng = map.containerPointToLatLng(popupCenter);
+    line.setLatLngs([latlng, popupLatLng]);
+  }
+
+  map.on("move zoom", actualizarLinea);
+
+  let isDragging = false;
+  let offset = [0, 0];
+
+  div.onmousedown = (e) => {
+    if (e.target.className === "btn-cerrar") return;
+    isDragging = true;
+    offset = [div.offsetLeft - e.clientX, div.offsetTop - e.clientY];
+    e.preventDefault();
+  };
+
+  document.onmousemove = (e) => {
+    if (isDragging) {
+      div.style.left = (e.clientX + offset[0]) + "px";
+      div.style.top = (e.clientY + offset[1]) + "px";
+      actualizarLinea();
+    }
+  };
+
+  document.onmouseup = () => { isDragging = false; };
+
+  div.querySelector(".btn-cerrar").onclick = () => {
+    div.remove();
+    map.removeLayer(line);
+    map.off("move zoom", actualizarLinea);
+    const index = popupsActivos.findIndex(i => i.popup === div);
+    if (index > -1) popupsActivos.splice(index, 1);
+  };
+
+  popupsActivos.push({ popup: div, line: line, actualizar: actualizarLinea });
+
+  setTimeout(actualizarLinea, 50);
+}
+
+/* ================= SHAPES ================= */
+fetch("https://raw.githubusercontent.com/caticoa3/colombia_mapa/master/co_2018_MGN_MPIO_POLITICO.geojson")
+.then(r => r.json())
+.then(data => {
+  capaMunicipios = L.geoJson(data, {
+    style: f => {
+      const c = getCodigoMunicipio(f);
+      return municipiosColoreados[c]
+        ? { color: "#333", weight: 1, fillColor: municipiosColoreados[c], fillOpacity: 0.7 }
+        : { color: "#777", weight: 0.4, fillColor: "#e0e0e0", fillOpacity: 0.25 };
+    },
+    onEachFeature: (f, l) => {
+      l.on("click", e => crearPopup(buscarEntidad(getCodigoMunicipio(f)), e.latlng));
+      l.bindTooltip(f.properties.MPIO_CNMBR || "Municipio", { sticky: true });
+    }
+  }).addTo(map);
+
+  aplicarFiltrosMapa();
+})
+.catch(err => console.error("Error cargando GeoJSON:", err));
+
+/* ================= FILTROS DINÁMICOS ================= */
+const sD = document.getElementById("filterDepartamento");
+const sM = document.getElementById("filterMunicipio");
+
+function unique(a) { return [...new Set(a)].sort(); }
+
+function entidadesFiltradas() {
+  return entidades.filter(e => {
+    if (sD.value && e.departamento !== sD.value) return false;
+    if (sM.value && e.municipio !== sM.value) return false;
+    return true;
+  });
+}
+
+function actualizarSelects() {
+  const ef = entidadesFiltradas();
+  function fill(sel, vals, label) {
+    const v = sel.value;
+    sel.innerHTML = `<option value="">${label}</option>`;
+    unique(vals).forEach(x => sel.add(new Option(x, x)));
+    if (vals.includes(v)) sel.value = v;
+  }
+  fill(sD, ef.map(e => e.departamento), "Departamento");
+  fill(sM, ef.map(e => e.municipio), "Municipio");
+}
+
+function aplicarFiltrosMapa() {
+  if (!capaMunicipios) return;
+  actualizarSelects();
+  capaMunicipios.eachLayer(l => {
+    const cod = getCodigoMunicipio(l.feature);
+    const ent = buscarEntidad(cod);
+    if (!sD.value && !sM.value) {
+      l.setStyle({ opacity: 1, fillOpacity: municipiosColoreados[cod] ? 0.7 : 0.25 });
+    } else if (ent && entidadesFiltradas().includes(ent)) {
+      l.setStyle({ opacity: 1, fillOpacity: 0.8 });
+    } else {
+      l.setStyle({ opacity: 0.3, fillOpacity: 0 });
+    }
+  });
+}
+
+[sD, sM].forEach(s => s.addEventListener("change", aplicarFiltrosMapa));
+
+document.getElementById("btnLimpiarFiltros").onclick = () => {
+  sD.value = ""; 
+  sM.value = "";
+  aplicarFiltrosMapa();
+  cerrarTodosLosPopups();
+};
+
+actualizarSelects();
+
+/* ================= TOGGLE FILTROS ================= */
+let filtrosVisibles = true;
+document.getElementById("toggleFiltersBtn").onclick = function () {
+  filtrosVisibles = !filtrosVisibles;
+  document.getElementById("filterBar").style.display = filtrosVisibles ? "block" : "none";
+  this.textContent = filtrosVisibles ? "Ocultar filtros" : "Mostrar filtros";
+};
+</script>
+
+</body>
+</html>
